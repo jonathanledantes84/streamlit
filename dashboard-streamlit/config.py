@@ -1,14 +1,11 @@
 # =============================================
 #   CONFIG.PY — Edita solo este archivo
+#   En Streamlit Cloud: usar Secrets (no poner keys aqui)
 # =============================================
-
-# --- Bybit API ---
-# ⚠️ En Streamlit Cloud usar Secrets (no poner keys aqui)
 API_KEY    = ""
 API_SECRET = ""
 TESTNET    = True
 
-# --- Pares a operar ---
 SYMBOLS = [
     {"symbol": "BTCUSDT", "qty": "0.001"},
 ]

@@ -1,517 +1,486 @@
 # -*- coding: utf-8 -*-
-"""
-DASHBOARD.PY — Panel de control SuperTrend Bot
-- Bot automático (SuperTrend)
-- Compra/venta manual
-- Desplegable en Streamlit Cloud (gratis)
-"""
-
 import streamlit as st
-import os, time, requests, json
+import os, time, requests
 from datetime import datetime
 from pybit.unified_trading import HTTP
 
-# ── Configuración ─────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="SuperTrend Bot",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="TrendPulse", page_icon="⚡", layout="wide")
 
-# ── Estilos ───────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif;
-    background-color: #0d0f14;
-    color: #e2e8f0;
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, [class*="css"], .stApp {
+    background: #080b10 !important;
+    color: #c9d1d9 !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
 }
-.stApp { background-color: #0d0f14; }
+.stApp { background: #080b10 !important; }
 
-h1, h2, h3 { font-family: 'Space Mono', monospace; }
-
-.metric-card {
-    background: #161b26;
-    border: 1px solid #2d3748;
-    border-radius: 12px;
-    padding: 20px;
-    text-align: center;
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: #0d1117 !important;
+    border-right: 1px solid #21262d !important;
 }
-.metric-value {
-    font-family: 'Space Mono', monospace;
-    font-size: 2rem;
+[data-testid="stSidebar"] * { color: #c9d1d9 !important; }
+
+/* Remove default padding */
+.block-container { padding: 1.5rem 2rem !important; max-width: 100% !important; }
+
+/* Header */
+.tp-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 0 20px 0;
+    border-bottom: 1px solid #21262d;
+    margin-bottom: 24px;
+}
+.tp-logo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.6rem;
     font-weight: 700;
-    margin: 8px 0;
+    color: #f0f6fc;
+    letter-spacing: -1px;
 }
-.metric-label {
-    font-size: 0.75rem;
-    color: #718096;
+.tp-logo span { color: #58a6ff; }
+.tp-mode {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    color: #8b949e;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 2px;
 }
-.green { color: #48bb78; }
-.red   { color: #fc8181; }
-.blue  { color: #63b3ed; }
-.yellow { color: #f6e05e; }
+.tp-mode.testnet { border-color: #d29922; color: #d29922; background: #1c1912; }
+.tp-mode.real    { border-color: #f85149; color: #f85149; background: #1c1012; }
 
-.trade-row {
-    background: #161b26;
-    border: 1px solid #2d3748;
+/* Metric cards */
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.metric-box {
+    background: #0d1117;
+    border: 1px solid #21262d;
     border-radius: 8px;
-    padding: 12px 16px;
-    margin: 6px 0;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+}
+.metric-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+}
+.metric-box.blue::before  { background: #58a6ff; }
+.metric-box.green::before { background: #3fb950; }
+.metric-box.red::before   { background: #f85149; }
+.metric-box.yellow::before { background: #d29922; }
+
+.metric-label {
+    font-size: 0.65rem;
+    color: #6e7681;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+}
+.metric-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: #f0f6fc;
+    line-height: 1;
+}
+.metric-val.blue  { color: #58a6ff; }
+.metric-val.green { color: #3fb950; }
+.metric-val.red   { color: #f85149; }
+.metric-val.yellow { color: #e3b341; }
+.metric-sub {
+    font-size: 0.72rem;
+    color: #6e7681;
+    margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Signal banner */
+.signal-buy {
+    background: linear-gradient(90deg, #0d2b1d 0%, #0d1117 100%);
+    border: 1px solid #238636;
+    border-left: 4px solid #3fb950;
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-bottom: 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+    color: #3fb950;
+}
+.signal-sell {
+    background: linear-gradient(90deg, #2d1517 0%, #0d1117 100%);
+    border: 1px solid #da3633;
+    border-left: 4px solid #f85149;
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-bottom: 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+    color: #f85149;
+}
+.signal-hold {
+    background: linear-gradient(90deg, #1c1912 0%, #0d1117 100%);
+    border: 1px solid #9e6a03;
+    border-left: 4px solid #d29922;
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-bottom: 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+    color: #d29922;
+}
+
+/* Section titles */
+.section-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    color: #6e7681;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    padding: 0 0 10px 0;
+    border-bottom: 1px solid #21262d;
+    margin-bottom: 16px;
+    margin-top: 24px;
+}
+
+/* Trade buttons */
+.stButton > button {
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    letter-spacing: 2px !important;
+    border-radius: 6px !important;
+    border: none !important;
+    height: 52px !important;
+    width: 100% !important;
+    text-transform: uppercase !important;
+    transition: all 0.15s ease !important;
+}
+
+/* Order history table */
+.order-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid #161b22;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
 }
-.signal-alcista {
-    background: linear-gradient(135deg, #1a2e1a, #1f3d1f);
-    border: 1px solid #276749;
-    border-radius: 8px;
-    padding: 16px;
-    text-align: center;
+.order-row:hover { background: #0d1117; }
+.tag-buy  { color: #3fb950; font-weight: 700; }
+.tag-sell { color: #f85149; font-weight: 700; }
+.price-val { color: #f0f6fc; }
+.time-val  { color: #6e7681; }
+
+/* Input styles */
+.stSelectbox > div, .stNumberInput > div { 
+    background: #161b22 !important; 
+    border: 1px solid #30363d !important;
 }
-.signal-bajista {
-    background: linear-gradient(135deg, #2d1515, #3d1f1f);
-    border: 1px solid #9b2c2c;
-    border-radius: 8px;
-    padding: 16px;
-    text-align: center;
-}
-.buy-btn button {
-    background: linear-gradient(135deg, #276749, #2f855a) !important;
-    color: white !important;
-    border: none !important;
-    font-family: 'Space Mono', monospace !important;
-    font-weight: 700 !important;
-    font-size: 1.1rem !important;
-    letter-spacing: 2px !important;
-    border-radius: 8px !important;
-    width: 100% !important;
-    padding: 12px !important;
-}
-.sell-btn button {
-    background: linear-gradient(135deg, #9b2c2c, #c53030) !important;
-    color: white !important;
-    border: none !important;
-    font-family: 'Space Mono', monospace !important;
-    font-weight: 700 !important;
-    font-size: 1.1rem !important;
-    letter-spacing: 2px !important;
-    border-radius: 8px !important;
-    width: 100% !important;
-    padding: 12px !important;
-}
-div[data-testid="stAlert"] {
-    border-radius: 8px;
-}
+
+/* Chart background */
+.js-plotly-plot .plotly { background: transparent !important; }
+
+/* Streamlit remove top padding */
+#MainMenu, footer, header { visibility: hidden; }
+.stDeployButton { display: none; }
+div[data-testid="stToolbar"] { display: none; }
+
+/* Alert override */
+.stAlert { border-radius: 6px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Parámetros SuperTrend ─────────────────────────────────────────────────
-ATR_PERIOD     = 10
-ATR_MULTIPLIER = 3.0
-TIMEFRAME      = "D"
-
-# ── Leer config ───────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────
 def get_config():
-    api_key    = os.environ.get("API_KEY", "")
-    api_secret = os.environ.get("API_SECRET", "")
-    testnet    = os.environ.get("TESTNET", "true").lower() == "true"
-    telegram_token   = os.environ.get("TELEGRAM_TOKEN", "")
-    telegram_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    api_key = api_secret = ""
+    testnet = True
+    tele_token = tele_chat = ""
     try:
         import config as c
-        if not api_key:    api_key    = c.API_KEY
-        if not api_secret: api_secret = c.API_SECRET
+        api_key, api_secret = c.API_KEY, c.API_SECRET
         testnet = c.TESTNET
-        if not telegram_token:   telegram_token   = c.TELEGRAM_TOKEN
-        if not telegram_chat_id: telegram_chat_id = c.TELEGRAM_CHAT_ID
+        tele_token, tele_chat = c.TELEGRAM_TOKEN, c.TELEGRAM_CHAT_ID
     except ImportError:
         pass
-    return api_key, api_secret, testnet, telegram_token, telegram_chat_id
+    api_key    = os.environ.get("API_KEY", api_key)
+    api_secret = os.environ.get("API_SECRET", api_secret)
+    tele_token = os.environ.get("TELEGRAM_TOKEN", tele_token)
+    tele_chat  = os.environ.get("TELEGRAM_CHAT_ID", tele_chat)
+    return api_key, api_secret, testnet, tele_token, tele_chat
 
 API_KEY, API_SECRET, TESTNET, TELE_TOKEN, TELE_CHAT = get_config()
+ATR_PERIOD, ATR_MULTIPLIER, TIMEFRAME = 10, 3.0, "D"
 
 @st.cache_resource
 def get_session():
     return HTTP(testnet=TESTNET, api_key=API_KEY, api_secret=API_SECRET)
-
 session = get_session()
 
 # ── Helpers ───────────────────────────────────────────────────────────────
-def send_telegram(msg):
-    if not TELE_TOKEN or not TELE_CHAT: return
-    try:
-        requests.post(f"https://api.telegram.org/bot{TELE_TOKEN}/sendMessage",
-                      json={"chat_id": TELE_CHAT, "text": msg}, timeout=5)
-    except Exception: pass
+def send_tg(msg):
+    if TELE_TOKEN and TELE_CHAT:
+        try: requests.post(f"https://api.telegram.org/bot{TELE_TOKEN}/sendMessage",
+                           json={"chat_id": TELE_CHAT, "text": msg}, timeout=5)
+        except: pass
 
 def get_balance():
     try:
         r = session.get_wallet_balance(accountType="UNIFIED", coin="USDT")
         return float(r["result"]["list"][0]["coin"][0]["walletBalance"])
-    except Exception:
-        return None
+    except: return None
 
 def get_precio(symbol):
     try:
         r = session.get_tickers(category="spot", symbol=symbol)
         return float(r["result"]["list"][0]["lastPrice"])
-    except Exception:
-        return None
+    except: return None
 
 def get_candles(symbol):
     try:
         result = session.get_kline(category="spot", symbol=symbol, interval=TIMEFRAME, limit=120)
-        candles = sorted(result["result"]["list"], key=lambda x: int(x[0]))
-        return (
-            [float(c[1]) for c in candles],  # open
-            [float(c[2]) for c in candles],  # high
-            [float(c[3]) for c in candles],  # low
-            [float(c[4]) for c in candles],  # close
-            [int(c[0])   for c in candles],  # timestamps
-        )
-    except Exception:
-        return None, None, None, None, None
+        c = sorted(result["result"]["list"], key=lambda x: int(x[0]))
+        return ([float(x[1]) for x in c],[float(x[2]) for x in c],
+                [float(x[3]) for x in c],[float(x[4]) for x in c],[int(x[0]) for x in c])
+    except: return None,None,None,None,None
 
-def calculate_supertrend(highs, lows, closes):
+def calc_supertrend(highs, lows, closes):
     trs = [max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1]))
            for i in range(1, len(closes))]
-    atr = [sum(trs[:ATR_PERIOD]) / ATR_PERIOD]
+    atr = [sum(trs[:ATR_PERIOD])/ATR_PERIOD]
     for i in range(ATR_PERIOD, len(trs)):
-        atr.append((atr[-1] * (ATR_PERIOD-1) + trs[i]) / ATR_PERIOD)
-
-    upper_band, lower_band, trend = [], [], []
+        atr.append((atr[-1]*(ATR_PERIOD-1)+trs[i])/ATR_PERIOD)
+    ub, lb, trend = [], [], []
     for i in range(len(atr)):
-        idx = i + ATR_PERIOD
-        hl2 = (highs[idx] + lows[idx]) / 2
-        bu  = hl2 + ATR_MULTIPLIER * atr[i]
-        bl  = hl2 - ATR_MULTIPLIER * atr[i]
-        if i == 0:
-            upper_band.append(bu); lower_band.append(bl)
-            trend.append(-1 if closes[idx] <= bu else 1)
+        idx = i+ATR_PERIOD
+        hl2 = (highs[idx]+lows[idx])/2
+        bu = hl2+ATR_MULTIPLIER*atr[i]; bl = hl2-ATR_MULTIPLIER*atr[i]
+        if i==0:
+            ub.append(bu); lb.append(bl)
+            trend.append(-1 if closes[idx]<=bu else 1)
         else:
-            ub = bu if bu < upper_band[-1] or closes[idx-1] > upper_band[-1] else upper_band[-1]
-            lb = bl if bl > lower_band[-1] or closes[idx-1] < lower_band[-1] else lower_band[-1]
-            upper_band.append(ub); lower_band.append(lb)
-            if   trend[-1]==-1 and closes[idx]>ub: trend.append(1)
-            elif trend[-1]==1  and closes[idx]<lb: trend.append(-1)
-            else:                                   trend.append(trend[-1])
-    return trend, upper_band, lower_band
+            u = bu if bu<ub[-1] or closes[idx-1]>ub[-1] else ub[-1]
+            l = bl if bl>lb[-1] or closes[idx-1]<lb[-1] else lb[-1]
+            ub.append(u); lb.append(l)
+            if   trend[-1]==-1 and closes[idx]>u:  trend.append(1)
+            elif trend[-1]==1  and closes[idx]<l:  trend.append(-1)
+            else: trend.append(trend[-1])
+    return trend, ub, lb
 
 def place_order(symbol, side, qty, razon="MANUAL"):
     try:
-        result = session.place_order(
-            category="linear", symbol=symbol, side=side,
-            orderType="Market", qty=str(qty), timeInForce="GTC"
-        )
-        order_id = result["result"]["orderId"]
-        precio   = get_precio(symbol) or 0
-        modo = "TESTNET" if TESTNET else "REAL"
-        send_telegram(f"[{side.upper()}] {razon}\nPar: {symbol}\nPrecio: {precio:.2f}\nCantidad: {qty}\nModo: {modo}")
-        return True, order_id, precio
+        r = session.place_order(category="linear", symbol=symbol, side=side,
+                                orderType="Market", qty=str(qty), timeInForce="GTC")
+        oid = r["result"]["orderId"]
+        precio = get_precio(symbol) or 0
+        send_tg(f"[{side.upper()}] {razon}\nPar: {symbol}\nPrecio: {precio:.2f}\nCantidad: {qty}")
+        return True, oid, precio
     except Exception as e:
         return False, str(e), 0
-
-def get_open_orders(symbol):
-    try:
-        r = session.get_open_orders(category="linear", symbol=symbol)
-        return r["result"]["list"]
-    except Exception:
-        return []
 
 def get_positions(symbol):
     try:
         r = session.get_positions(category="linear", symbol=symbol, settleCoin="USDT")
-        return [p for p in r["result"]["list"] if float(p.get("size", 0)) > 0]
-    except Exception:
-        return []
+        return [p for p in r["result"]["list"] if float(p.get("size",0))>0]
+    except: return []
 
-# ── Estado de sesión ──────────────────────────────────────────────────────
-if "historial" not in st.session_state:
-    st.session_state.historial = []
-if "last_refresh" not in st.session_state:
-    st.session_state.last_refresh = datetime.now()
-if "symbol" not in st.session_state:
-    st.session_state.symbol = "BTCUSDT"
+# ── Session state ─────────────────────────────────────────────────────────
+if "historial" not in st.session_state: st.session_state.historial = []
 
 # ── Sidebar ───────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## ⚙️ Config")
-    modo_txt = "🟡 TESTNET" if TESTNET else "🔴 REAL"
-    st.markdown(f"**Modo:** {modo_txt}")
+    st.markdown("### ⚙ Configuración")
+    symbol = st.selectbox("Par", ["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT"])
+    qty    = st.number_input("Cantidad", min_value=0.0001, value=0.001, step=0.001, format="%.4f")
     st.divider()
-
-    symbol = st.selectbox("Par", ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"],
-                           index=0)
-    st.session_state.symbol = symbol
-
-    qty = st.number_input("Cantidad", min_value=0.0001, value=0.001,
-                           step=0.001, format="%.4f")
-
+    auto = st.checkbox("Auto-refresh (30s)")
+    if st.button("↻  Actualizar", use_container_width=True):
+        st.cache_data.clear(); st.rerun()
     st.divider()
-    st.markdown("### 🔄 Actualizar")
-    auto_refresh = st.checkbox("Auto-refresh (30s)", value=False)
-    if st.button("🔃 Actualizar ahora", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+    st.markdown(f"<div style='font-size:0.7rem;color:#6e7681;font-family:IBM Plex Mono'>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>", unsafe_allow_html=True)
 
-    st.divider()
-    st.markdown(f"<small style='color:#718096'>Última actualización:<br>{st.session_state.last_refresh.strftime('%H:%M:%S')}</small>",
-                unsafe_allow_html=True)
-
-# ── Título ────────────────────────────────────────────────────────────────
+# ── Header ────────────────────────────────────────────────────────────────
+modo_class = "testnet" if TESTNET else "real"
+modo_txt   = "TESTNET" if TESTNET else "⚠ REAL"
 st.markdown(f"""
-<h1 style='font-family:Space Mono,monospace; font-size:1.8rem; margin-bottom:0'>
-📈 SuperTrend Bot
-<span style='font-size:0.9rem; color:#718096; font-weight:400'> — {symbol}</span>
-</h1>
+<div class="tp-header">
+  <div class="tp-logo">Trend<span>Pulse</span></div>
+  <div class="tp-mode {modo_class}">{modo_txt}</div>
+  <div style="flex:1"></div>
+  <div style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:#6e7681">{symbol}</div>
+</div>
 """, unsafe_allow_html=True)
 
-st.markdown("---")
-
-# ── Cargar datos ──────────────────────────────────────────────────────────
-with st.spinner("Cargando datos..."):
-    precio_actual = get_precio(symbol)
-    balance       = get_balance()
+# ── Fetch data ────────────────────────────────────────────────────────────
+with st.spinner(""):
+    precio  = get_precio(symbol)
+    balance = get_balance()
     opens, highs, lows, closes, timestamps = get_candles(symbol)
 
-# ── Señal SuperTrend ──────────────────────────────────────────────────────
-trend_actual = None
-trend_prev   = None
-supertrend_line = None
+# ── SuperTrend ────────────────────────────────────────────────────────────
+trend_cur = trend_prev = st_line = None
+if closes and len(closes) > ATR_PERIOD+5:
+    trend, ub, lb = calc_supertrend(highs, lows, closes)
+    trend_cur  = trend[-1]
+    trend_prev = trend[-2]
+    st_line    = lb[-1] if trend_cur==1 else ub[-1]
 
-if closes and len(closes) > ATR_PERIOD + 5:
-    trend, upper_band, lower_band = calculate_supertrend(highs, lows, closes)
-    trend_actual = trend[-1]
-    trend_prev   = trend[-2]
-    supertrend_line = lower_band[-1] if trend_actual == 1 else upper_band[-1]
+# ── Metric cards ──────────────────────────────────────────────────────────
+p_fmt  = f"${precio:,.2f}"   if precio  else "—"
+b_fmt  = f"${balance:,.2f}" if balance else "—"
+t_color, t_txt = ("green","▲ ALCISTA") if trend_cur==1 else ("red","▼ BAJISTA") if trend_cur==-1 else ("yellow","—")
+st_fmt = f"${st_line:,.2f}" if st_line else "—"
 
-# ── Métricas principales ──────────────────────────────────────────────────
-col1, col2, col3, col4 = st.columns(4)
+st.markdown(f"""
+<div class="metric-grid">
+  <div class="metric-box blue">
+    <div class="metric-label">Precio {symbol[:3]}/USDT</div>
+    <div class="metric-val blue">{p_fmt}</div>
+  </div>
+  <div class="metric-box">
+    <div class="metric-label">Saldo USDT</div>
+    <div class="metric-val">{b_fmt}</div>
+    <div class="metric-sub">Cuenta unificada</div>
+  </div>
+  <div class="metric-box {t_color}">
+    <div class="metric-label">Tendencia</div>
+    <div class="metric-val {t_color}">{t_txt}</div>
+  </div>
+  <div class="metric-box yellow">
+    <div class="metric-label">Nivel SuperTrend</div>
+    <div class="metric-val yellow">{st_fmt}</div>
+    <div class="metric-sub">ATR({ATR_PERIOD}) × {ATR_MULTIPLIER}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-with col1:
-    precio_fmt = f"${precio_actual:,.2f}" if precio_actual else "—"
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-label">Precio {symbol[:3]}</div>
-        <div class="metric-value blue">{precio_fmt}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col2:
-    balance_fmt = f"${balance:,.2f}" if balance else "—"
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-label">Saldo USDT</div>
-        <div class="metric-value">{balance_fmt}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col3:
-    if trend_actual is not None:
-        color  = "green" if trend_actual == 1 else "red"
-        estado = "▲ ALCISTA" if trend_actual == 1 else "▼ BAJISTA"
+# ── Señal ─────────────────────────────────────────────────────────────────
+if trend_cur is not None and trend_prev is not None:
+    cambio = trend_cur != trend_prev
+    if cambio and trend_cur==1:
+        st.markdown('<div class="signal-buy">▲ SEÑAL BOT: COMPRAR — SuperTrend cambió a alcista en el cierre de vela</div>', unsafe_allow_html=True)
+    elif cambio and trend_cur==-1:
+        st.markdown('<div class="signal-sell">▼ SEÑAL BOT: VENDER — SuperTrend cambió a bajista en el cierre de vela</div>', unsafe_allow_html=True)
+    elif trend_cur==1:
+        st.markdown('<div class="signal-hold">◆ Tendencia alcista activa — sin cambio en este cierre</div>', unsafe_allow_html=True)
     else:
-        color, estado = "yellow", "— SIN DATOS"
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-label">Tendencia</div>
-        <div class="metric-value {color}">{estado}</div>
-    </div>
-    """, unsafe_allow_html=True)
+        st.markdown('<div class="signal-hold">◆ Tendencia bajista activa — sin cambio en este cierre</div>', unsafe_allow_html=True)
 
-with col4:
-    st_fmt = f"${supertrend_line:,.2f}" if supertrend_line else "—"
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-label">SuperTrend</div>
-        <div class="metric-value yellow">{st_fmt}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ── Señal del bot ─────────────────────────────────────────────────────────
-if trend_actual is not None and trend_prev is not None:
-    cambio = trend_prev != trend_actual
-    if cambio and trend_actual == 1:
-        st.success("🚀 **SEÑAL BOT: COMPRAR** — El SuperTrend acaba de cambiar a ALCISTA")
-    elif cambio and trend_actual == -1:
-        st.error("🔻 **SEÑAL BOT: VENDER** — El SuperTrend acaba de cambiar a BAJISTA")
-    elif trend_actual == 1:
-        st.info("✅ Tendencia ALCISTA activa — el bot mantiene posición larga")
-    else:
-        st.warning("⏸️ Tendencia BAJISTA activa — el bot no compra")
-
-st.markdown("---")
-
-# ── Gráfico de velas ──────────────────────────────────────────────────────
-st.markdown("### 📊 Gráfico")
+# ── Gráfico ───────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">Gráfico · Diario</div>', unsafe_allow_html=True)
 
 if closes and len(closes) > 20:
     import plotly.graph_objects as go
-
-    n = min(60, len(closes))
+    n   = min(60, len(closes))
     ts  = [datetime.fromtimestamp(t/1000) for t in timestamps[-n:]]
-    op  = opens[-n:]
-    hi  = highs[-n:]
-    lo  = lows[-n:]
-    cl  = closes[-n:]
-
-    # SuperTrend line para el gráfico
-    st_values = []
-    if len(trend) >= n:
-        for i in range(n):
-            idx = len(trend) - n + i
-            if trend[idx] == 1:
-                st_values.append(lower_band[idx])
-            else:
-                st_values.append(upper_band[idx])
-
     fig = go.Figure()
-
     fig.add_trace(go.Candlestick(
-        x=ts, open=op, high=hi, low=lo, close=cl,
+        x=ts, open=opens[-n:], high=highs[-n:], low=lows[-n:], close=closes[-n:],
         name=symbol,
-        increasing_line_color="#48bb78",
-        decreasing_line_color="#fc8181",
-        increasing_fillcolor="#48bb78",
-        decreasing_fillcolor="#fc8181",
+        increasing=dict(line=dict(color="#3fb950", width=1), fillcolor="#1a3a24"),
+        decreasing=dict(line=dict(color="#f85149", width=1), fillcolor="#3a1a1a"),
     ))
-
-    if st_values:
-        # Color de la línea SuperTrend según tendencia
-        colors_st = []
-        for i in range(n):
-            idx = len(trend) - n + i
-            colors_st.append("#48bb78" if trend[idx] == 1 else "#fc8181")
-
-        for i in range(len(st_values) - 1):
-            fig.add_trace(go.Scatter(
-                x=[ts[i], ts[i+1]],
-                y=[st_values[i], st_values[i+1]],
-                mode="lines",
-                line=dict(color=colors_st[i], width=2),
-                showlegend=False,
-                hoverinfo="skip"
-            ))
-
+    # SuperTrend line
+    if len(trend) >= n:
+        for i in range(n-1):
+            idx = len(trend)-n+i
+            col = "#3fb950" if trend[idx]==1 else "#f85149"
+            val = lb[idx] if trend[idx]==1 else ub[idx]
+            val2= lb[idx+1] if trend[idx+1]==1 else ub[idx+1]
+            fig.add_trace(go.Scatter(x=[ts[i],ts[i+1]], y=[val,val2],
+                mode="lines", line=dict(color=col, width=2),
+                showlegend=False, hoverinfo="skip"))
     fig.update_layout(
-        paper_bgcolor="#0d0f14",
-        plot_bgcolor="#0d0f14",
-        font=dict(color="#e2e8f0", family="DM Sans"),
-        xaxis=dict(gridcolor="#1a202c", showgrid=True),
-        yaxis=dict(gridcolor="#1a202c", showgrid=True),
-        margin=dict(l=0, r=0, t=20, b=0),
-        height=380,
+        paper_bgcolor="#080b10", plot_bgcolor="#0d1117",
+        font=dict(color="#8b949e", family="IBM Plex Mono", size=10),
+        xaxis=dict(gridcolor="#161b22", linecolor="#21262d", showgrid=True, zeroline=False),
+        yaxis=dict(gridcolor="#161b22", linecolor="#21262d", showgrid=True, zeroline=False, side="right"),
+        margin=dict(l=0, r=60, t=10, b=0), height=360,
         xaxis_rangeslider_visible=False,
         showlegend=False,
+        hovermode="x unified",
     )
-
     st.plotly_chart(fig, use_container_width=True)
-else:
-    st.warning("Sin datos suficientes para el gráfico")
 
-st.markdown("---")
+# ── Trading manual ────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">Trading Manual</div>', unsafe_allow_html=True)
 
-# ── Panel de trading manual ───────────────────────────────────────────────
-st.markdown("### 🎯 Trading Manual")
+col1, col2 = st.columns(2)
 
-col_buy, col_sell = st.columns(2)
-
-with col_buy:
-    st.markdown('<div class="buy-btn">', unsafe_allow_html=True)
-    if st.button(f"▲  COMPRAR  {symbol}", key="btn_buy", use_container_width=True):
-        ok, result, precio_op = place_order(symbol, "Buy", qty, "MANUAL BUY")
+with col1:
+    st.markdown("""<style>div[data-testid="column"]:nth-of-type(1) .stButton>button{
+        background:#1a3a24 !important; color:#3fb950 !important;
+        border:1px solid #238636 !important;}</style>""", unsafe_allow_html=True)
+    if st.button(f"▲   COMPRAR  {symbol[:3]}", key="buy", use_container_width=True):
+        ok, res, p = place_order(symbol, "Buy", qty)
         if ok:
-            st.success(f"✅ Orden de COMPRA enviada — ID: {result} @ ${precio_op:,.2f}")
-            st.session_state.historial.append({
-                "hora": datetime.now().strftime("%H:%M:%S"),
-                "tipo": "BUY",
-                "symbol": symbol,
-                "qty": qty,
-                "precio": precio_op,
-                "id": result
-            })
+            st.success(f"✓ Compra ejecutada @ ${p:,.2f}  |  ID: {res}")
+            st.session_state.historial.append({"t":"BUY","s":symbol,"q":qty,"p":p,"h":datetime.now().strftime("%H:%M:%S")})
         else:
-            st.error(f"❌ Error: {result}")
-    st.markdown('</div>', unsafe_allow_html=True)
+            st.error(f"✗ Error: {res}")
 
-with col_sell:
-    st.markdown('<div class="sell-btn">', unsafe_allow_html=True)
-    if st.button(f"▼  VENDER  {symbol}", key="btn_sell", use_container_width=True):
-        ok, result, precio_op = place_order(symbol, "Sell", qty, "MANUAL SELL")
+with col2:
+    st.markdown("""<style>div[data-testid="column"]:nth-of-type(2) .stButton>button{
+        background:#3a1a1a !important; color:#f85149 !important;
+        border:1px solid #da3633 !important;}</style>""", unsafe_allow_html=True)
+    if st.button(f"▼   VENDER  {symbol[:3]}", key="sell", use_container_width=True):
+        ok, res, p = place_order(symbol, "Sell", qty)
         if ok:
-            st.success(f"✅ Orden de VENTA enviada — ID: {result} @ ${precio_op:,.2f}")
-            st.session_state.historial.append({
-                "hora": datetime.now().strftime("%H:%M:%S"),
-                "tipo": "SELL",
-                "symbol": symbol,
-                "qty": qty,
-                "precio": precio_op,
-                "id": result
-            })
+            st.success(f"✓ Venta ejecutada @ ${p:,.2f}  |  ID: {res}")
+            st.session_state.historial.append({"t":"SELL","s":symbol,"q":qty,"p":p,"h":datetime.now().strftime("%H:%M:%S")})
         else:
-            st.error(f"❌ Error: {result}")
-    st.markdown('</div>', unsafe_allow_html=True)
+            st.error(f"✗ Error: {res}")
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ── Posiciones abiertas ───────────────────────────────────────────────────
-st.markdown("### 📂 Posiciones Abiertas")
+# ── Posiciones ────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">Posiciones Abiertas</div>', unsafe_allow_html=True)
 
 positions = get_positions(symbol)
 if positions:
     for pos in positions:
-        side_pos = pos.get("side", "")
-        size_pos = pos.get("size", "0")
-        entry    = float(pos.get("avgPrice", 0))
-        upnl     = float(pos.get("unrealisedPnl", 0))
-        pnl_color = "green" if upnl >= 0 else "red"
-        pnl_sign  = "+" if upnl >= 0 else ""
+        upnl = float(pos.get("unrealisedPnl", 0))
         col_a, col_b, col_c, col_d = st.columns(4)
-        col_a.metric("Par", symbol)
-        col_b.metric("Lado", side_pos)
-        col_c.metric("Entrada", f"${entry:,.2f}")
-        col_d.metric("P&L no realizado", f"{pnl_sign}${upnl:.2f}")
+        col_a.metric("Lado", pos.get("side",""))
+        col_b.metric("Tamaño", pos.get("size",""))
+        col_c.metric("Entrada", f"${float(pos.get('avgPrice',0)):,.2f}")
+        col_d.metric("P&L", f"{'+'if upnl>=0 else''}${upnl:.2f}", delta=f"{upnl:.2f}")
 else:
-    st.markdown("<small style='color:#718096'>Sin posiciones abiertas en este par</small>",
-                unsafe_allow_html=True)
+    st.markdown("<p style='color:#6e7681;font-size:0.8rem;font-family:IBM Plex Mono'>Sin posiciones abiertas</p>", unsafe_allow_html=True)
 
-st.markdown("---")
-
-# ── Historial de esta sesión ───────────────────────────────────────────────
-st.markdown("### 🕒 Órdenes de esta sesión")
+# ── Historial ─────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">Historial · Esta sesión</div>', unsafe_allow_html=True)
 
 if st.session_state.historial:
+    st.markdown('<div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;overflow:hidden">', unsafe_allow_html=True)
     for op in reversed(st.session_state.historial):
-        color = "#48bb78" if op["tipo"] == "BUY" else "#fc8181"
+        tag_class = "tag-buy" if op["t"]=="BUY" else "tag-sell"
         st.markdown(f"""
-        <div class="trade-row">
-            <span style="color:{color}; font-family:'Space Mono',monospace; font-weight:700">{op['tipo']}</span>
-            <span>{op['symbol']}</span>
-            <span>{op['qty']}</span>
-            <span>${op['precio']:,.2f}</span>
-            <span style="color:#718096">{op['hora']}</span>
-        </div>
-        """, unsafe_allow_html=True)
+        <div class="order-row">
+          <span class="{tag_class}">{op['t']}</span>
+          <span style="color:#c9d1d9">{op['s']}</span>
+          <span style="color:#c9d1d9">{op['q']}</span>
+          <span class="price-val">${op['p']:,.2f}</span>
+          <span class="time-val">{op['h']}</span>
+        </div>""", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 else:
-    st.markdown("<small style='color:#718096'>Sin operaciones en esta sesión</small>",
-                unsafe_allow_html=True)
+    st.markdown("<p style='color:#6e7681;font-size:0.8rem;font-family:IBM Plex Mono'>Sin operaciones en esta sesión</p>", unsafe_allow_html=True)
 
-# ── Footer ────────────────────────────────────────────────────────────────
-st.markdown("<br><br>", unsafe_allow_html=True)
-modo_label = "TESTNET (práctica)" if TESTNET else "⚠️ DINERO REAL"
-st.markdown(f"<center><small style='color:#4a5568'>SuperTrend Bot · Modo: {modo_label} · {datetime.now().strftime('%Y-%m-%d %H:%M')}</small></center>",
-            unsafe_allow_html=True)
-
-# ── Auto-refresh ──────────────────────────────────────────────────────────
-if auto_refresh:
-    st.session_state.last_refresh = datetime.now()
-    time.sleep(30)
-    st.rerun()
+if auto:
+    time.sleep(30); st.rerun()
